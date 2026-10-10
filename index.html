@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Minecraft 1.21 地形生成ビューア</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 20px;
+        font-family: sans-serif;
+        background-color: #1e1e1e;
+        color: #f0f0f0;
+      }
+      h1 {
+        margin-top: 0;
+        font-size: 20px;
+      }
+      h2 {
+        font-size: 16px;
+        margin-top: 16px;
+        margin-bottom: 8px;
+        color: #4ec9b0;
+      }
+      .card {
+        background-color: #2b2b2b;
+        border: 1px solid #3c3c3c;
+        border-radius: 6px;
+        padding: 16px;
+        margin-bottom: 16px;
+      }
+      .button-row {
+        margin-bottom: 16px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        align-items: center;
+      }
+      button {
+        background-color: #0e639c;
+        color: white;
+        border: none;
+        padding: 8px 16px;
+        font-size: 14px;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      button:hover {
+        background-color: #1177bb;
+      }
+      button.secondary {
+        background-color: #383838;
+      }
+      button.secondary:hover {
+        background-color: #4a4a4a;
+      }
+      .control-panel {
+        background-color: #242424;
+        border: 1px solid #383838;
+        border-radius: 4px;
+        padding: 12px;
+        margin-bottom: 16px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 16px;
+        align-items: center;
+      }
+      .input-group {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .input-group label {
+        font-size: 13px;
+        color: #aaa;
+      }
+      .input-group input[type="text"],
+      .input-group input[type="number"],
+      .input-group select {
+        background-color: #1a1a1a;
+        border: 1px solid #444;
+        color: #fff;
+        padding: 6px 10px;
+        border-radius: 4px;
+        font-size: 14px;
+        width: 100px;
+      }
+      .input-group input.wide {
+        width: 140px;
+      }
+      .input-group select {
+        width: 180px;
+      }
+      .tools-panel {
+        background-color: #1f1f24;
+        border: 1px solid #33333d;
+        border-radius: 4px;
+        padding: 10px 14px;
+        margin-bottom: 12px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 20px;
+        align-items: center;
+      }
+      .tool-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+      }
+      .tool-item input[type="range"] {
+        width: 180px;
+        cursor: pointer;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        margin-bottom: 16px;
+        font-size: 13px;
+      }
+      th {
+        background-color: #383838;
+        padding: 6px 10px;
+        border: 1px solid #444;
+        text-align: left;
+      }
+      pre {
+        background-color: #181818;
+        padding: 12px;
+        border-radius: 4px;
+        overflow-x: auto;
+        font-size: 13px;
+        line-height: 1.4;
+      }
+      .error-box {
+        background-color: #5a1d1d;
+        border: 1px solid #a83232;
+        padding: 12px;
+        border-radius: 4px;
+        margin-bottom: 16px;
+        display: none;
+        white-space: pre-wrap;
+        word-break: break-all;
+      }
+      #viewport-wrapper {
+        position: relative;
+        width: 100%;
+        height: 560px;
+        background-color: #141419;
+        border: 1px solid #444;
+        border-radius: 6px;
+        overflow: hidden;
+        margin-bottom: 16px;
+      }
+      #viewport-container {
+        width: 100%;
+        height: 100%;
+      }
+      .viewport-overlay {
+        position: absolute;
+        bottom: 10px;
+        left: 10px;
+        background-color: rgba(0, 0, 0, 0.75);
+        color: #ddd;
+        padding: 6px 12px;
+        border-radius: 4px;
+        font-size: 12px;
+        pointer-events: none;
+        line-height: 1.5;
+      }
+      .progress-bar-container {
+        width: 100%;
+        background-color: #333;
+        border-radius: 4px;
+        height: 10px;
+        overflow: hidden;
+        margin-top: 8px;
+        margin-bottom: 6px;
+      }
+      .progress-bar-fill {
+        height: 100%;
+        background-color: #0e639c;
+        width: 0%;
+        transition: width 0.2s ease;
+      }
+      .legend-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        font-size: 12px;
+        color: #ccc;
+        margin-top: 8px;
+      }
+      .legend-item {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+      .legend-box {
+        width: 12px;
+        height: 12px;
+        border-radius: 2px;
+        border: 1px solid rgba(255,255,255,0.2);
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Minecraft 1.21 地形・洞窟探検ビューア</h1>
+    <div id="error-box" class="error-box"></div>
+    
+    <div class="card">
+      <div class="control-panel">
+        <div class="input-group">
+          <label for="seed-input">シード値:</label>
+          <input id="seed-input" class="wide" type="text" value="12345" />
+        </div>
+        <div class="input-group">
+          <label for="coord-x-input">中心 X:</label>
+          <input id="coord-x-input" type="number" value="100" />
+        </div>
+        <div class="input-group">
+          <label for="coord-z-input">中心 Z:</label>
+          <input id="coord-z-input" type="number" value="-200" />
+        </div>
+        <div class="input-group">
+          <label for="render-radius-select">描画範囲:</label>
+          <select id="render-radius-select">
+            <option value="1">3×3 チャンク (48m×48m)</option>
+            <option value="2">5×5 チャンク (80m×80m 広域)</option>
+          </select>
+        </div>
+        <button id="teleport-btn">この座標に移動して生成</button>
+
+        <span style="color: #666; margin: 0 4px;">|</span>
+        <button id="preset-ocean-btn" class="secondary">海 (0, 0)</button>
+        <button id="preset-mountain-btn" class="secondary">山岳 (100, -200)</button>
+        <button id="preset-plains-btn" class="secondary">平原 (412, -772)</button>
+      </div>
+
+      <div class="tools-panel">
+        <div class="input-group">
+          <label for="camera-mode-select" style="font-weight: bold; color: #4ec9b0;">操作モード:</label>
+          <select id="camera-mode-select">
+            <option value="orbit">オービット (外側から回転)</option>
+            <option value="spectator">スペクテイター (自由飛行探検)</option>
+          </select>
+        </div>
+
+        <span style="color: #666; margin: 0 4px;">|</span>
+
+        <div class="tool-item">
+          <input id="xray-toggle" type="checkbox" style="cursor: pointer;" />
+          <label for="xray-toggle" style="cursor: pointer; font-weight: bold; color: #4ec9b0;">常時X線透視モード</label>
+        </div>
+        <div class="tool-item">
+          <label for="y-cutoff-slider">高さ断面スライサー:</label>
+          <input id="y-cutoff-slider" type="range" min="-64" max="320" value="320" step="1" />
+          <span id="y-cutoff-val" style="color: #4ec9b0; font-family: monospace; font-size: 13px;">Y=320</span>
+        </div>
+      </div>
+
+      <div class="button-row">
+        <button id="copy-report-btn">デバッグレポートをコピー</button>
+        <span id="copy-status" style="margin-left: 10px; color: #aaa;"></span>
+      </div>
+
+      <h2>3D ビューア</h2>
+      <div id="viewport-wrapper">
+        <div id="viewport-container"></div>
+        <div class="viewport-overlay">
+          【オービット】ドラッグ: 回転 | 右ドラッグ: 平行移動 | ホイール: ズーム<br />
+          【スペクテイター】W/A/S/D: 前後左右飛行 | Space: 上昇 | Shift: 下降 | ドラッグ: 視線変更<br />
+          <span style="color: #4ec9b0;">※地中に潜ると直近の壁がクリップ消去され、周囲の岩が透けて洞窟や地下水脈・溶岩が見渡せます。</span>
+        </div>
+      </div>
+
+      <div class="legend-row">
+        <div class="legend-item"><div class="legend-box" style="background:#5b8c32;"></div>草</div>
+        <div class="legend-item"><div class="legend-box" style="background:#866043;"></div>土</div>
+        <div class="legend-item"><div class="legend-box" style="background:#808080;"></div>石</div>
+        <div class="legend-item"><div class="legend-box" style="background:#383838;"></div>深層岩</div>
+        <div class="legend-item"><div class="legend-box" style="background:#f0f5f5;"></div>雪</div>
+        <div class="legend-item"><div class="legend-box" style="background:#2979ff;"></div>水</div>
+        <div class="legend-item"><div class="legend-box" style="background:#ff5500;"></div>溶岩</div>
+      </div>
+
+      <div style="margin-top: 12px;">
+        <span id="chunks-status-text" style="font-size: 13px; color: #aaa;">チャンク生成中...</span>
+        <div class="progress-bar-container">
+          <div id="chunks-progress-fill" class="progress-bar-fill"></div>
+        </div>
+        <p id="chunk-meta-output" style="color: #888; font-size: 12px; margin-top: 4px;">初期化中...</p>
+      </div>
+
+      <h2>中心座標サンプリング結果</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>座標 (X, Z)</th>
+            <th>バイオーム</th>
+            <th>地表 (WG)</th>
+            <th>海底 (WG)</th>
+            <th>大陸度 (C)</th>
+            <th>侵食度 (E)</th>
+            <th>温度 (T)</th>
+            <th>湿度 (V)</th>
+          </tr>
+        </thead>
+        <tbody id="samples-table-body">
+          <tr><td colspan="8" style="padding: 12px; text-align: center; color: #888;">計算中...</td></tr>
+        </tbody>
+      </table>
+
+      <h2>詳細デバッグレポート</h2>
+      <pre id="status-output">初期化中...</pre>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
