@@ -54,6 +54,12 @@
       button.secondary:hover {
         background-color: #4a4a4a;
       }
+      button.highlight {
+        background-color: #a86c00;
+      }
+      button.highlight:hover {
+        background-color: #c78000;
+      }
       .control-panel {
         background-color: #242424;
         border: 1px solid #383838;
@@ -118,11 +124,13 @@
         margin-bottom: 16px;
         font-size: 13px;
       }
-      th {
-        background-color: #383838;
+      th, td {
         padding: 6px 10px;
         border: 1px solid #444;
         text-align: left;
+      }
+      th {
+        background-color: #383838;
       }
       pre {
         background-color: #181818;
@@ -202,10 +210,34 @@
         border-radius: 2px;
         border: 1px solid rgba(255,255,255,0.2);
       }
+      .f3-input-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+        gap: 8px;
+        margin-bottom: 12px;
+      }
+      .f3-input-item {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+      .f3-input-item label {
+        font-size: 11px;
+        color: #4ec9b0;
+      }
+      .f3-input-item input {
+        background-color: #1a1a1a;
+        border: 1px solid #444;
+        color: #fff;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 13px;
+        width: 100%;
+      }
     </style>
   </head>
   <body>
-    <h1>Minecraft 1.21 地形・洞窟探検ビューア</h1>
+    <h1>Minecraft 1.21 地形生成ビューア (F3 完全検証モード)</h1>
     <div id="error-box" class="error-box"></div>
     
     <div class="card">
@@ -216,11 +248,15 @@
         </div>
         <div class="input-group">
           <label for="coord-x-input">中心 X:</label>
-          <input id="coord-x-input" type="number" value="100" />
+          <input id="coord-x-input" type="number" value="-2423" />
+        </div>
+        <div class="input-group">
+          <label for="coord-y-input">測定 Y:</label>
+          <input id="coord-y-input" type="number" value="149" />
         </div>
         <div class="input-group">
           <label for="coord-z-input">中心 Z:</label>
-          <input id="coord-z-input" type="number" value="-200" />
+          <input id="coord-z-input" type="number" value="885" />
         </div>
         <div class="input-group">
           <label for="render-radius-select">描画範囲:</label>
@@ -229,12 +265,22 @@
             <option value="2">5×5 チャンク (80m×80m 広域)</option>
           </select>
         </div>
-        <button id="teleport-btn">この座標に移動して生成</button>
+        <button id="teleport-btn">測定実行</button>
+      </div>
 
-        <span style="color: #666; margin: 0 4px;">|</span>
-        <button id="preset-ocean-btn" class="secondary">海 (0, 0)</button>
-        <button id="preset-mountain-btn" class="secondary">山岳 (100, -200)</button>
-        <button id="preset-plains-btn" class="secondary">平原 (412, -772)</button>
+      <!-- 機能A: F3手動入力および自動差分表 -->
+      <div style="background-color: #1f1f23; border: 1px solid #383844; border-radius: 4px; padding: 12px; margin-bottom: 16px;">
+        <h3 style="margin: 0 0 8px 0; font-size: 14px; color: #4ec9b0;">本家 F3 実測値の入力 (自動差分計算)</h3>
+        <div class="f3-input-grid">
+          <div class="f3-input-item"><label>F3 T (温度)</label><input id="f3-t-input" type="number" step="0.001" value="0.562" /></div>
+          <div class="f3-input-item"><label>F3 V (湿度)</label><input id="f3-v-input" type="number" step="0.001" value="0.227" /></div>
+          <div class="f3-input-item"><label>F3 C (大陸度)</label><input id="f3-c-input" type="number" step="0.001" value="-0.004" /></div>
+          <div class="f3-input-item"><label>F3 E (侵食度)</label><input id="f3-e-input" type="number" step="0.001" value="0.535" /></div>
+          <div class="f3-input-item"><label>F3 D (深さ/高度)</label><input id="f3-d-input" type="number" step="0.001" value="-0.566" /></div>
+          <div class="f3-input-item"><label>F3 W (尾根度)</label><input id="f3-w-input" type="number" step="0.001" value="-0.614" /></div>
+          <div class="f3-input-item"><label>F3 PV (峰谷)</label><input id="f3-pv-input" type="number" step="0.001" value="0.841" /></div>
+        </div>
+        <button id="calc-diff-btn" class="highlight" style="padding: 6px 12px; font-size: 13px;">差分を計算して更新</button>
       </div>
 
       <div class="tools-panel">
@@ -279,6 +325,8 @@
         <div class="legend-item"><div class="legend-box" style="background:#866043;"></div>土</div>
         <div class="legend-item"><div class="legend-box" style="background:#808080;"></div>石</div>
         <div class="legend-item"><div class="legend-box" style="background:#383838;"></div>深層岩</div>
+        <div class="legend-item"><div class="legend-box" style="background:#dcd39e;"></div>砂</div>
+        <div class="legend-item"><div class="legend-box" style="background:#596e2d;"></div>苔</div>
         <div class="legend-item"><div class="legend-box" style="background:#f0f5f5;"></div>雪</div>
         <div class="legend-item"><div class="legend-box" style="background:#2979ff;"></div>水</div>
         <div class="legend-item"><div class="legend-box" style="background:#ff5500;"></div>溶岩</div>
@@ -292,22 +340,53 @@
         <p id="chunk-meta-output" style="color: #888; font-size: 12px; margin-top: 4px;">初期化中...</p>
       </div>
 
-      <h2>中心座標サンプリング結果</h2>
+      <h2>機能A: F3値との自動差分表 (アプリ値 − F3値)</h2>
       <table>
         <thead>
           <tr>
-            <th>座標 (X, Z)</th>
-            <th>バイオーム</th>
-            <th>地表 (WG)</th>
-            <th>海底 (WG)</th>
-            <th>大陸度 (C)</th>
-            <th>侵食度 (E)</th>
-            <th>温度 (T)</th>
-            <th>湿度 (V)</th>
+            <th>項目</th>
+            <th>本家 F3 値</th>
+            <th>アプリ値 (実測)</th>
+            <th>差分 (アプリ − F3)</th>
           </tr>
         </thead>
-        <tbody id="samples-table-body">
-          <tr><td colspan="8" style="padding: 12px; text-align: center; color: #888;">計算中...</td></tr>
+        <tbody id="diff-table-body">
+          <tr><td colspan="4" style="padding: 12px; text-align: center; color: #888;">測定待ち...</td></tr>
+        </tbody>
+      </table>
+
+      <h2>機能B: 3通りの座標計算方式の並列比較</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>方式</th>
+            <th>T (温度)</th>
+            <th>V (湿度)</th>
+            <th>C (大陸度)</th>
+            <th>E (侵食度)</th>
+            <th>D (深さ)</th>
+            <th>W (尾根度)</th>
+          </tr>
+        </thead>
+        <tbody id="modes-table-body">
+          <tr><td colspan="7" style="padding: 12px; text-align: center; color: #888;">測定待ち...</td></tr>
+        </tbody>
+      </table>
+
+      <h2>機能B-2: 周辺グリッド探索 (±1〜±4 ブロックずらし)</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>オフセット (dX, dY, dZ)</th>
+            <th>T (温度)</th>
+            <th>V (湿度)</th>
+            <th>C (大陸度)</th>
+            <th>E (侵食度)</th>
+            <th>D (深さ)</th>
+          </tr>
+        </thead>
+        <tbody id="grid-table-body">
+          <tr><td colspan="6" style="padding: 12px; text-align: center; color: #888;">測定待ち...</td></tr>
         </tbody>
       </table>
 

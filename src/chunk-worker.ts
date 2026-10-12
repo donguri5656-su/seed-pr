@@ -106,6 +106,12 @@ function initWorker(seedBigInt: bigint) {
   if (!preparedSettings.material_rule && preparedSettings.surface_rule) {
     preparedSettings.material_rule = preparedSettings.surface_rule;
   }
+  
+  // deepslate の地下水脈(Aquifer)無効化バグを回避するパッチ
+  // noise_router 内部のバリアや溶岩の密度関数設定を aquifers キーに横流しする
+  if (preparedSettings.aquifers_enabled && preparedSettings.noise_router) {
+    preparedSettings.aquifers = preparedSettings.noise_router;
+  }
 
   const normalizedNoiseSettings = normalizeDensityFunctionJson(preparedSettings);
   settings = NoiseGeneratorSettings.fromJson(normalizedNoiseSettings);
@@ -172,11 +178,15 @@ function generateChunk(chunkX: number, chunkZ: number, generationId: number) {
   const centerQuartZ = (chunkZ * 16 + 8) >> 2;
   const biomeId = biomeSource.getBiome(centerQuartX, 64 >> 2, centerQuartZ, randomState.sampler);
 
-  // 1. ベース地形充填
-  generator.buildTerrain(randomState, chunk, false, biomeId);
+  // 1. 公式の NoiseChunk を生成 (本物のアクイファー計算等が含まれる)
+  const noiseChunk = (generator as any).createNoiseChunk(randomState, chunk, false);
 
-  // 2. 16×16 全面への地表ルール適用
-  applySurfaceRule16x16(chunk, settings, randomState, biomeSource, (generator as any).globalFluidPicker);
+  // 2. ベース地形の充填 (doFill)
+  // バニラのアクイファーロジックにより、洞窟内の地下水脈、空洞、溶岩湖が正しく配置される
+  (generator as any).doFill(chunk, noiseChunk);
+
+  // 3. 16×16 全面への完全な地表ルールの適用 (アクイファー情報を維持したまま上書き)
+  applySurfaceRule16x16(chunk, noiseChunk, settings, randomState, biomeSource);
 
   const generationTimeMs = performance.now() - startTime;
 
@@ -247,7 +257,8 @@ self.onmessage = (event) => {
   } else if (data.type === 'GENERATE') {
     try {
       const res = generateChunk(data.chunkX, data.chunkZ, data.generationId);
-      self.postMessage(
+      // self as any を使ってTSのWorker PostMessage型エラーを回避
+      (self as any).postMessage(
         {
           type: 'CHUNK_DONE',
           generationId: res.generationId,

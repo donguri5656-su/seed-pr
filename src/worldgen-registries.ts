@@ -10,11 +10,12 @@ export function unwrapJson(moduleObj: unknown): any {
 
 /**
  * バニラ公式ノイズJSON (firstOctave, amplitudes) から NormalNoise を正確に初期化する関数
+ * (第4引数を 'legacy' にすることで、Java版バニラのパリティ正規化係数を適用する)
  */
 export function parseVanillaNoise(rawJson: any): NormalNoise {
   const firstOctave = typeof rawJson?.firstOctave === 'number' ? rawJson.firstOctave : 0;
   const amplitudes = Array.isArray(rawJson?.amplitudes) ? rawJson.amplitudes : [1];
-  return new NormalNoise(1, firstOctave, amplitudes.length, 'enabled', amplitudes);
+  return new NormalNoise(1, firstOctave, amplitudes.length, 'legacy', amplitudes);
 }
 
 /**

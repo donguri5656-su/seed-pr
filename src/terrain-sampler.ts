@@ -9,18 +9,37 @@ import {
 } from 'deepslate';
 import { unwrapJson, normalizeDensityFunctionJson } from './worldgen-registries.js';
 
-export interface SampleResult {
-  x: number;
-  z: number;
-  biome: string;
-  surfaceHeight: number;
-  oceanFloorHeight: number;
+export interface ClimateValues {
   temperature: number;
   vegetation: number;
   continentalness: number;
   erosion: number;
   depth: number;
   weirdness: number;
+  peaksAndValleys: number;
+}
+
+export interface SampleResult extends ClimateValues {
+  x: number;
+  y: number;
+  z: number;
+  biome: string;
+  surfaceBiome: string;
+  surfaceHeight: number;
+  oceanFloorHeight: number;
+}
+
+export interface GridSearchItem {
+  dx: number;
+  dy: number;
+  dz: number;
+  values: ClimateValues;
+}
+
+export interface MultiModeSampleResult {
+  standard: ClimateValues;
+  quartTruncated: ClimateValues;
+  gridSearch: GridSearchItem[];
 }
 
 export interface HeightDensityProfile {
@@ -34,6 +53,7 @@ export interface Diagnostics {
   erosionDirect: number;
   finalDensityDirect: number;
   densityAtY48: number;
+  noodleAtY48: number;
   slopedCheeseAtY48: number;
   yFunctionAtY48: number;
   densityProfile: HeightDensityProfile[];
@@ -43,7 +63,8 @@ export interface InitializedGenerator {
   generator: NoiseChunkGenerator;
   randomState: RandomState;
   biomeSource: MultiNoiseBiomeSource;
-  sampleCoordinate: (x: number, z: number) => SampleResult;
+  sampleCoordinate: (x: number, z: number, customY?: number) => SampleResult;
+  sampleMultiMode: (x: number, y: number, z: number) => MultiModeSampleResult;
   diagnostics: Diagnostics;
   settings: NoiseGeneratorSettings;
 }
@@ -133,27 +154,83 @@ export function initializeOverworldGenerator(
     densityProfile,
   };
 
-  // 8. 座標サンプリング用関数
-  const sampleCoordinate = (x: number, z: number): SampleResult => {
-    const surfaceHeight = generator.getBaseHeight(x, z, 'WORLD_SURFACE_WG', randomState);
-    const oceanFloorHeight = generator.getBaseHeight(x, z, 'OCEAN_FLOOR_WG', randomState);
+  // 内部ヘルパー: 指定座標(x, y, z)での気候値を計算する
+  const evaluateClimateAt = (x: number, y: number, z: number): ClimateValues => {
+    const quartX = x >> 2;
+    const quartY = y >> 2;
+    const quartZ = z >> 2;
 
     const climateSampler = randomState.sampler;
-    const climate = climateSampler.sample(x >> 2, 64 >> 2, z >> 2);
-    const biomeId = biomeSource.getBiome(x >> 2, 64 >> 2, z >> 2, climateSampler);
+    const climate = climateSampler.sample(quartX, quartY, quartZ);
+    const pv = -Math.abs(Math.abs(climate.weirdness) - 0.666667) * 3.0 + 1.0;
 
     return {
-      x,
-      z,
-      biome: biomeId.toString(),
-      surfaceHeight,
-      oceanFloorHeight,
       temperature: climate.temperature,
       vegetation: climate.humidity,
       continentalness: climate.continentalness,
       erosion: climate.erosion,
       depth: climate.depth,
       weirdness: climate.weirdness,
+      peaksAndValleys: pv,
+    };
+  };
+
+  // 8. 座標サンプリング用関数（標準）
+  const sampleCoordinate = (x: number, z: number, customY?: number): SampleResult => {
+    const surfaceHeight = generator.getBaseHeight(x, z, 'WORLD_SURFACE_WG', randomState);
+    const oceanFloorHeight = generator.getBaseHeight(x, z, 'OCEAN_FLOOR_WG', randomState);
+    const targetY = customY !== undefined ? customY : surfaceHeight;
+
+    const climateVals = evaluateClimateAt(x, targetY, z);
+    const quartX = x >> 2;
+    const quartZ = z >> 2;
+    const surfaceQuartY = surfaceHeight >> 2;
+
+    const climateSampler = randomState.sampler;
+    const biomeId = biomeSource.getBiome(quartX, targetY >> 2, quartZ, climateSampler);
+    const surfaceBiomeId = biomeSource.getBiome(quartX, surfaceQuartY, quartZ, climateSampler);
+
+    return {
+      x,
+      y: targetY,
+      z,
+      biome: biomeId.toString(),
+      surfaceBiome: surfaceBiomeId.toString(),
+      surfaceHeight,
+      oceanFloorHeight,
+      ...climateVals,
+    };
+  };
+
+  // 機能B: 多重モード測定
+  const sampleMultiMode = (x: number, y: number, z: number): MultiModeSampleResult => {
+    const standard = evaluateClimateAt(x, y, z);
+
+    const qx = (x >> 2) << 2;
+    const qy = (y >> 2) << 2;
+    const qz = (z >> 2) << 2;
+    const quartTruncated = evaluateClimateAt(qx, qy, qz);
+
+    const gridSearch: GridSearchItem[] = [];
+    const offsets = [-4, -3, -2, -1, 0, 1, 2, 3, 4];
+    for (const dx of offsets) {
+      for (const dy of [-2, 0, 2]) {
+        for (const dz of offsets) {
+          if (dx === 0 && dy === 0 && dz === 0) continue;
+          gridSearch.push({
+            dx,
+            dy,
+            dz,
+            values: evaluateClimateAt(x + dx, y + dy, z + dz),
+          });
+        }
+      }
+    }
+
+    return {
+      standard,
+      quartTruncated,
+      gridSearch,
     };
   };
 
@@ -162,6 +239,7 @@ export function initializeOverworldGenerator(
     randomState,
     biomeSource,
     sampleCoordinate,
+    sampleMultiMode,
     diagnostics,
     settings,
   };
